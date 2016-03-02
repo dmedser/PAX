@@ -32,7 +32,17 @@ INCLUDES := $(wildcard $(SRCDIR)/*.h)
 OBJECTS  := $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 rm       = rm -rf
 
-.PHONEY all : $(BINDIR)/$(TARGET) 
+
+.PHONEY : help
+help:
+	@echo "$(TARGET) help:"
+	@echo "		all: Compiles and builds (default), runs cppcheck and doxygen"
+	@echo "		clean: cleans obj dir"
+	@echo "		remove: cleans obj and bin dir"
+	@echo "		cppcheck: runs cppcheck"
+	@echo "		doxygen: runs doxygen"
+
+.PHONEY all : cppcheck $(BINDIR)/$(TARGET) doxygen
 
 $(BINDIR)/$(TARGET): $(OBJECTS) | $(BINDIR)
 	$(CC) $(LDFLAGS) -o $@.elf  $(OBJECTS) -lm
@@ -60,8 +70,14 @@ remove: clean
 	@$(rm) $(BINDIR)
 	@echo "Executable removed!"
 
-.PHONEY : help
-help:
-	@echo "all: Compiles and builds (default)"
-	@echo "clean: cleans obj dir"
-	@echo "remove: cleans obj and bin dir"
+.PHONEY : cppcheck
+cppcheck:
+	@echo "Running cppcheck..."
+	@cppcheck   -q  --enable=all --std=c99   $(SRCDIR)/*.c  -I $(AVR_HOME)/avr/include -D__AVR_ATmega128RFA1__ 
+	@echo "Done!"
+
+.PHONEY : doxygen
+doxygen:
+	@echo "Running doxygen..."
+	@doxygen
+	@echo "Done!"
