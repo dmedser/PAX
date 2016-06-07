@@ -3,6 +3,8 @@
 #include "stddef.h"
 #include "avr/io.h"
 
+
+
 uint8_t init_uart(const struct uart_init* init_struct, uint32_t uart_freq)
 {
 	RT_ASSERT(init_struct != NULL, ERROR_TYPE_NULL_PTR);
@@ -47,7 +49,8 @@ uint8_t init_uart(const struct uart_init* init_struct, uint32_t uart_freq)
 uint8_t enable_uart(void)
 {
 	RT_ASSERT(UBRR1H != 0 || UBRR1L != 0, ERROR_TYPE_BAUD_RATE_NOT_SET);
-	UCSR1B =  (1 << RXEN1) | (1 << TXEN1);
+	UCSR1B = (1 << RXEN1) | (1 << TXEN1);
+	UCSR1B |= (1 << RXCIE1);
 	return ERROR_TYPE_OK;
 }
 
@@ -69,3 +72,5 @@ void uart_transmit_float(float data)
 		uart_transmit(*byte_ptr++);
 	}
 }
+
+

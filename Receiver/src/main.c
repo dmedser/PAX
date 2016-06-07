@@ -30,13 +30,14 @@ int main(void)
 	/* Глобальное разрешение прерываний */
 	SREG |= (1 << SREG_I);
 	
+	
 	/* Инициализация радиомодуля */
 	{
 		rf_init.enable_crc = true;
 		rf_init.channel_no = RF_CHANNEL_11;
-		ret_val = init_rf(&rf_init);
+		ret_val = init_rf(&rf_init); 
 		check_error(ret_val);
-	
+		
 		ret_val = enable_rf(RECEIVER);
 		check_error(ret_val);
 	}

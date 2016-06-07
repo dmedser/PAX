@@ -17,9 +17,9 @@ enum axis {
 #define BMA180_ID	  3
 #define SOFT_RESET_VAL 0xB6
 
-#define OFFSET_X_VAL (0x92e)
-#define OFFSET_Y_VAL (0x7a5)
-#define OFFSET_Z_VAL (0x6d5)
+#define OFFSET_X_VAL (0x92C)//e
+#define OFFSET_Y_VAL (0x7a6)
+#define OFFSET_Z_VAL (0x6d5)//16g = (0x6f6)
 
 /* Регистры BMA180 */
 #define CHIP_ID			0x00

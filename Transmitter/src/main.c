@@ -23,7 +23,7 @@ int main (void)
 {
 	volatile uint8_t ret_val;
 	volatile struct rf_init rf_init;
-	uint8_t rf_transfers_per_sec = 1;
+	uint8_t rf_transfers_per_sec = 100;
 	
 	/* Глобальное разрешение прерываний */
 	SREG |= (1 << SREG_I);
@@ -56,6 +56,6 @@ int main (void)
 	ret_val = enable_rf(TRANSMITTER);
 	check_error(ret_val);
 		
-	
-	while(true);
+		
+	while(true) {}
 }
