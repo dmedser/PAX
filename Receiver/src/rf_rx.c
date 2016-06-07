@@ -98,7 +98,7 @@ ISR(TRX24_RX_END_vect)
 					 *    текущей 
 					 * 3. Выбираем новую десятку из оставшихся 18-ти значений - последние 5
 					 *    из предыдущей и первые пять из текущей
-					 * 4. Сглаживаем полученную десятку
+					 * 4. Сглаживаем полученную десятку, отправляем ее по UART
 					 */
 					moving_average_smoothing(&prev_x[0]);
 					moving_average_smoothing(&prev_y[0]);
@@ -153,6 +153,9 @@ ISR(TRX24_RX_END_vect)
 					uart_transmit_float(sm_y[i]);
 					uart_transmit_float(sm_z[i]);
 				}
+			/*
+			 * Разделительные байты между 10-ю выборками
+			 */
 			uart_transmit(0x7c);
 			uart_transmit(0x6e);
 			frame_count = 0;
