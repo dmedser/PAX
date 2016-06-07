@@ -7,11 +7,17 @@
 
 static uint8_t frame_count = 0;
 
+/*
+ * Сглаживание 10-элементного массива  
+ * по алгоритму скользящего среднего
+ */
+
 void moving_average_smoothing(float* f)
 {
 	float tmp[10];
-	for(int i = 0; i < 10; i++)
+	for(int i = 0; i < 10; i++) {
 		tmp[i] = f[i];
+	}
 	
 	f[0] = tmp[0];
 	f[1] = (tmp[0] + tmp[1] + tmp[2])/3;
@@ -85,6 +91,15 @@ ISR(TRX24_RX_END_vect)
 				curr_z[frame_count] = *float_ptr;
 				frame_count++;
 				if(frame_count == 10) {
+					
+					/*
+					 * 1. Сглаживаем предыдущую и текущую десятки
+					 * 2. Отбрасываем последнее значение предыдущей десятки и первое значение 
+					 *    текущей 
+					 * 3. Выбираем новую десятку из оставшихся 18-ти значений - последние 5
+					 *    из предыдущей и первые пять из текущей
+					 * 4. Сглаживаем полученную десятку
+					 */
 					moving_average_smoothing(&prev_x[0]);
 					moving_average_smoothing(&prev_y[0]);
 					moving_average_smoothing(&prev_z[0]);
