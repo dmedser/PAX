@@ -7,15 +7,40 @@
 
 static uint8_t frame_count = 0;
 
+enum frame_types {
+	PREVIOUS,
+	CURRENT,
+	TEMPORARY
+};
+
+#define FRAME_SIZE (10)
+
+static float prev_x[FRAME_SIZE];
+static float prev_y[FRAME_SIZE];
+static float prev_z[FRAME_SIZE];
+
+static float curr_x[FRAME_SIZE];
+static float curr_y[FRAME_SIZE];
+static float curr_z[FRAME_SIZE];
+
+static float tmp_x[FRAME_SIZE];
+static float tmp_y[FRAME_SIZE];
+static float tmp_z[FRAME_SIZE];
+
+
+static bool it_is_1st_sample = true;
+static bool filter_is_on = false;
+static bool step_detection_is_on = false;
+static bool first_max_is_found = false;
+
 /*
  * Сглаживание 10-элементного массива  
  * по алгоритму скользящего среднего
  */
-
-void moving_average_smoothing(float* f)
+void moving_average_frame_smoothing(float* f)
 {
-	float tmp[10];
-	for(int i = 0; i < 10; i++) {
+	float tmp[FRAME_SIZE];
+	for(int i = 0; i < FRAME_SIZE; i++) {
 		tmp[i] = f[i];
 	}
 	
@@ -31,27 +56,117 @@ void moving_average_smoothing(float* f)
 	f[9] = tmp[9];	
 }
 
-
-static float prev_x[10];
-static float prev_y[10];
-static float prev_z[10];
-
-static float curr_x[10];
-static float curr_y[10];
-static float curr_z[10];
-
-
-static bool it_is_1st_sample = true;
-static bool filter_is_on = false;
-
-
 ISR(USART1_RX_vect)
 {
 	char byte = UDR1;
 	switch(byte) {
-		case 'F': filter_is_on = true; break;
-		case 'N': filter_is_on = false; break;
-		default: break;
+	case 'F': filter_is_on = true; break;
+	case 'N': filter_is_on = false; break;
+	case 'S': step_detection_is_on = true; break;
+	default: break;
+	}
+}
+
+void send_header_by_uart() 
+{
+	uart_transmit(0x7c);
+	uart_transmit(0x6e);
+}
+
+void read_xyz_to_tmp(float* source) 
+{
+	tmp_x[frame_count] = *source++;
+	tmp_y[frame_count] = *source++;
+	tmp_z[frame_count] = *source;
+}
+
+void copy_tmp_to(enum frame_types target) 
+{
+	float *destination_x;
+	float *destination_y;
+	float *destination_z;
+
+	switch(target) {
+	case PREVIOUS: { 	
+		destination_x = &prev_x[0];
+		destination_y = &prev_y[0];
+		destination_z = &prev_z[0];
+		break;
+	}
+	case CURRENT: {
+		destination_x = &curr_x[0];
+		destination_y = &curr_y[0];
+		destination_z = &curr_z[0];
+		break;
+	}
+	default: break;	
+	}
+	
+	for(uint8_t i = 0; i < FRAME_SIZE; i++) {
+		destination_x[i] = tmp_x[i];
+		destination_y[i] = tmp_y[i];
+		destination_z[i] = tmp_z[i];
+	} 
+}
+
+void smooth(enum frame_types target) 
+{
+	switch(target) {
+	case PREVIOUS: {
+		moving_average_frame_smoothing(&prev_x[0]);
+		moving_average_frame_smoothing(&prev_y[0]);
+		moving_average_frame_smoothing(&prev_z[0]);
+		break;	
+	}
+	case CURRENT: {
+		moving_average_frame_smoothing(&curr_x[0]);
+		moving_average_frame_smoothing(&curr_y[0]);
+		moving_average_frame_smoothing(&curr_z[0]);
+		break;
+	}
+	case TEMPORARY: {
+		moving_average_frame_smoothing(&tmp_x[0]);
+		moving_average_frame_smoothing(&tmp_y[0]);
+		moving_average_frame_smoothing(&tmp_z[0]);
+		break;
+	}
+	default: break;
+	}
+}
+
+void merge_prev_and_curr_to_tmp() {
+	for(uint8_t i = 4, j = 0; i < 9; i++, j++) {
+		tmp_x[j] = prev_x[i];
+	}
+	for(uint8_t i = 1, j = 5; i < 6; i++, j++) {
+		tmp_x[j] = curr_x[i];
+	}
+	for(uint8_t i = 4, j = 0; i < 9; i++, j++) {
+		tmp_y[j] = prev_y[i];
+	}
+	for(uint8_t i = 1, j = 5; i < 6; i++, j++) {
+		tmp_y[j] = curr_y[i];
+	}
+	for(uint8_t i = 4, j = 0; i < 9; i++, j++) {
+		tmp_z[j] = prev_z[i];
+	}
+	for(uint8_t i = 1, j = 5; i < 6; i++, j++) {
+		tmp_z[j] = curr_z[i];
+	}
+}
+
+void send_frame_by_uart(bool save_prev_frame) {
+	for (uint8_t i = 0; i < FRAME_SIZE; i++) {
+		uart_transmit_float(tmp_x[i]);
+		uart_transmit_float(tmp_y[i]);
+		uart_transmit_float(tmp_z[i]);
+	}
+	if(save_prev_frame) {
+		for (uint8_t i = 0; i < FRAME_SIZE; i++) {	
+				prev_x[i] = tmp_x[i];
+				prev_y[i] = tmp_y[i];
+				prev_z[i] = tmp_z[i];
+			}
 	}
 }
 
@@ -60,38 +175,24 @@ ISR(TRX24_RX_END_vect)
 {
 	/* Проверка корректности контрольной суммы */
 	if (PHY_RSSI & (1 << RX_CRC_VALID)) {
-
-		/* Содержимое фрейма */
-		//uint8_t tmp_frame[MAX_FRAME_SIZE];
-		//uint8_t frame_length;
-		//frame_length = TST_RX_LENGTH;
-		//memcpy(&tmp_frame[0], (void*)&TRXFBST, frame_length);
-
-		float sm_x[10];
-		float sm_y[10];
-		float sm_z[10];
-		
+				
 		float *float_ptr = (float*)&TRXFBST;
+		read_xyz_to_tmp(float_ptr);
+		frame_count++;
 		
 		//FILTER ON
 		if(filter_is_on) {
+			 /* Первую десятку записываем в буфер, но по UART не передаем */
 			if(it_is_1st_sample) {
-				prev_x[frame_count] = *float_ptr++;
-				prev_y[frame_count] = *float_ptr++;
-				prev_z[frame_count] = *float_ptr;
-				frame_count++;
-				if(frame_count == 10) {
+				if(frame_count == FRAME_SIZE) {
+					copy_tmp_to(PREVIOUS);
 					it_is_1st_sample = false;
 					frame_count = 0;
 				}
 			}
 			else {
-				curr_x[frame_count] = *float_ptr++;
-				curr_y[frame_count] = *float_ptr++;
-				curr_z[frame_count] = *float_ptr;
-				frame_count++;
-				if(frame_count == 10) {
-					
+				if(frame_count == FRAME_SIZE) {
+					copy_tmp_to(CURRENT);
 					/*
 					 * 1. Сглаживаем предыдущую и текущую десятки
 					 * 2. Отбрасываем последнее значение предыдущей десятки и первое значение 
@@ -100,69 +201,62 @@ ISR(TRX24_RX_END_vect)
 					 *    из предыдущей и первые пять из текущей
 					 * 4. Сглаживаем полученную десятку, отправляем ее по UART
 					 */
-					moving_average_smoothing(&prev_x[0]);
-					moving_average_smoothing(&prev_y[0]);
-					moving_average_smoothing(&prev_z[0]);
-					
-					moving_average_smoothing(&curr_x[0]);
-					moving_average_smoothing(&curr_y[0]);
-					moving_average_smoothing(&curr_z[0]);
-					
-					for(int i = 4, j = 0; i < 9; i++, j++)
-					sm_x[j] = prev_x[i];
-					for(int i = 1, j = 5; i < 6; i++, j++)
-					sm_x[j] = curr_x[i];
-					for(int i = 4, j = 0; i < 9; i++, j++)
-					sm_y[j] = prev_y[i];
-					for(int i = 1, j = 5; i < 6; i++, j++)
-					sm_y[j] = curr_y[i];
-					for(int i = 4, j = 0; i < 9; i++, j++)
-					sm_z[j] = prev_z[i];
-					for(int i = 1, j = 5; i < 6; i++, j++)
-					sm_z[j] = curr_z[i];
-					
-					moving_average_smoothing(&sm_x[0]);
-					moving_average_smoothing(&sm_y[0]);
-					moving_average_smoothing(&sm_z[0]);
-					
-					for (uint8_t i = 0; i < 10; i++)
-					{
-						uart_transmit_float(sm_x[i]);
-						uart_transmit_float(sm_y[i]);
-						uart_transmit_float(sm_z[i]);
-						prev_x[i] = sm_x[i];
-						prev_y[i] = sm_y[i];
-						prev_z[i] = sm_z[i];
-					}
-					uart_transmit(0x7c);
-					uart_transmit(0x6e);
+					smooth(PREVIOUS);
+					smooth(CURRENT);
+					merge_prev_and_curr_to_tmp();
+					smooth(TEMPORARY);
+					send_frame_by_uart(true);
+					send_header_by_uart();
 					frame_count = 0;
 				}
 			}
 		}
+		//FILTER OFF
 		else { 
-			//FILTER OFF
-			sm_x[frame_count] = *float_ptr++;
-			sm_y[frame_count] = *float_ptr++;
-			sm_z[frame_count] = *float_ptr;
-			frame_count++;
-			if(frame_count == 10) {
-				for (uint8_t i = 0; i < 10; i++)
-				{
-					uart_transmit_float(sm_x[i]);
-					uart_transmit_float(sm_y[i]);
-					uart_transmit_float(sm_z[i]);
-				}
-			/*
-			 * Разделительные байты между 10-ю выборками
-			 */
-			uart_transmit(0x7c);
-			uart_transmit(0x6e);
-			frame_count = 0;
+			if(frame_count == FRAME_SIZE) {
+				send_frame_by_uart(false);
+				send_header_by_uart();
+				frame_count = 0;
 			}
 		}
-				
-		
 	}
 }
 	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+		
+		

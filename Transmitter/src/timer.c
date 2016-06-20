@@ -16,17 +16,12 @@ uint8_t  init_timer(uint8_t samples_per_sec)
 	float tmp = (float)((1/(float)samples_per_sec)*F_CPU/(float)256);
 	uint8_t tmpl = (uint8_t)((uint32_t)tmp & 0xFF);
 	uint8_t tmph = (uint8_t)((uint32_t)tmp >> 8);
-	
-	//OCR1AL = tmpl;
-	//OCR1AH = tmph; 
 	OCR1A = tmp;
 	TCCR1B = 0x0;
-	TCCR1B |= (1 << WGM12);	 /* CTC mode, TOP = OCR1A */
-	TCCR1B |= 0x4;           /* cs2:0 = clk/256 = 62500 ò/ñ */
+	TCCR1B |= (1 << WGM12);		/* CTC mode, TOP = OCR1A */
+	TCCR1B |= 0x4;				/* cs2:0 = clk/256 = 62500 ò/ñ */
 	return ERROR_TYPE_OK;
 }
-
-static uint32_t total = 0;
 
 ISR(TIMER1_COMPA_vect) {
 	volatile uint8_t xl, xh, yl, yh, zl, zh;
@@ -41,18 +36,21 @@ ISR(TIMER1_COMPA_vect) {
 
 	tmp_buf[0] = xl >> 2;
 	tmp_buf[0]|= ((uint16_t) xh << 6);
-	if (tmp_buf[0] & 0x2000) 
+	if (tmp_buf[0] & 0x2000) {
 		tmp_buf[0] |= 0xC000;
+	}
 	
 	tmp_buf[1] = yl >> 2;
 	tmp_buf[1]|= ((uint16_t) yh << 6);
-	if (tmp_buf[1] & 0x2000) 
+	if (tmp_buf[1] & 0x2000) { 
 		tmp_buf[1] |= 0xC000;
+	}
 	
 	tmp_buf[2] = zl >> 2;
 	tmp_buf[2]|= ((uint16_t) zh << 6);
-	if (tmp_buf[2] & 0x2000)
+	if (tmp_buf[2] & 0x2000) {
 		tmp_buf[2] |= 0xC000;
+	}
 	
 	float sample[SAMPLE_SIZE];
 	
@@ -61,5 +59,4 @@ ISR(TIMER1_COMPA_vect) {
 	sample[2] = (float)2.0*tmp_buf[2]/8191.0;
 	
 	rf_transmit(sample);
-	total++;
 }

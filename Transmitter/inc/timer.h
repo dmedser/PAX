@@ -7,7 +7,7 @@
 /*
  * С помощью таймера определяем количество выборок в секунду
  */
-uint8_t  init_timer(uint8_t samples_per_sec);
+uint8_t init_timer(uint8_t samples_per_sec);
 
 
 

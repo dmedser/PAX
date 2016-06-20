@@ -70,6 +70,7 @@ uint8_t  enable_rf(enum rf_role role)
 			while ((TRX_STATUS & 0x1F) == STATE_TRANSITION_IN_PROGRESS);
 			break;
 		}
+	default: break;
 	}
 	return ERROR_TYPE_OK;
 }

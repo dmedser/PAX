@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 
-// Старший и младший биты байта
+/* Старший и младший биты байта */
 #define MSB			7
 #define LSB			0
 
@@ -17,9 +17,10 @@ enum axis {
 #define BMA180_ID	  3
 #define SOFT_RESET_VAL 0xB6
 
-#define OFFSET_X_VAL (0x92C)//e
+/* Значения актуальны для режима +/-2g */
+#define OFFSET_X_VAL (0x92C)
 #define OFFSET_Y_VAL (0x7a6)
-#define OFFSET_Z_VAL (0x6d5)//16g = (0x6f6)
+#define OFFSET_Z_VAL (0x6d5)
 
 /* Регистры BMA180 */
 #define CHIP_ID			0x00

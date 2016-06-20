@@ -6,7 +6,6 @@
 #include "rf_config.h"
 #include "spi_config.h"
 
-
 void check_error(uint8_t error)
 {
 	volatile uint8_t error_type = error;
@@ -42,7 +41,6 @@ int main (void)
 	
 	ret_val = init_bma180(BMA180_2G, BMA180_1200HZ);
 	check_error(ret_val);
-		
 
 	ret_val = init_timer(rf_transfers_per_sec);
 	check_error(ret_val);
@@ -55,7 +53,6 @@ int main (void)
 	
 	ret_val = enable_rf(TRANSMITTER);
 	check_error(ret_val);
-		
 		
 	while(true) {}
 }

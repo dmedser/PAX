@@ -8,9 +8,9 @@
 /* Частота тактирования CPU = 16 МГц */
 #define F_CPU (16000000)
 
-void check_error(uint8_t  error)
+void check_error(uint8_t error)
 {
-    volatile uint8_t  error_type = error;
+    volatile uint8_t error_type = error;
     if (error_type == ERROR_TYPE_OK)
         return;
     while(true);
@@ -24,12 +24,11 @@ void check_error(uint8_t  error)
 
 int main(void) 
 {
-    uint8_t  ret_val;
+    uint8_t ret_val;
 	struct rf_init rf_init;
 	
 	/* Глобальное разрешение прерываний */
 	SREG |= (1 << SREG_I);
-	
 	
 	/* Инициализация радиомодуля */
 	{
