@@ -5,7 +5,9 @@
 #include <util/delay.h>
 #define F_CPU 16000000UL  
 
-static uint8_t frame_count = 0;
+
+/* Текущее количество значений ускорений в десятке */
+static uint8_t frame_counter = 0;
 
 enum frame_types {
 	PREVIOUS,
@@ -28,14 +30,14 @@ static float tmp_y[FRAME_SIZE];
 static float tmp_z[FRAME_SIZE];
 
 
-static bool it_is_1st_sample = true;
+static bool it_is_1st_frame = true;
 static bool filter_is_on = false;
-static bool step_detection_is_on = false;
-static bool first_max_is_found = false;
 
 /*
  * Сглаживание 10-элементного массива  
- * по алгоритму скользящего среднего
+ * по алгоритму скользящего среднего. 
+ * Первое и последнее значение не усредняются, 
+ * что приводит к разрыву непрерывной прямой на границах десяток 
  */
 void moving_average_frame_smoothing(float* f)
 {
@@ -62,7 +64,6 @@ ISR(USART1_RX_vect)
 	switch(byte) {
 	case 'F': filter_is_on = true; break;
 	case 'N': filter_is_on = false; break;
-	case 'S': step_detection_is_on = true; break;
 	default: break;
 	}
 }
@@ -75,9 +76,9 @@ void send_header_by_uart()
 
 void read_xyz_to_tmp(float* source) 
 {
-	tmp_x[frame_count] = *source++;
-	tmp_y[frame_count] = *source++;
-	tmp_z[frame_count] = *source;
+	tmp_x[frame_counter] = *source++;
+	tmp_y[frame_counter] = *source++;
+	tmp_z[frame_counter] = *source;
 }
 
 void copy_tmp_to(enum frame_types target) 
@@ -170,6 +171,51 @@ void send_frame_by_uart(bool save_prev_frame) {
 	}
 }
 
+static float st_d;						// СКО - среднеквадратическое отколнение
+static uint32_t total_samples;			// Количество полученных значений ускорений, начиная со старта программы 
+static float curr_avg = 0;				// Среднее значение всех полученных значений ускорений 
+static float prev_avg;
+static bool there_was_a_peak = false;
+static bool there_was_a_pit = true;
+static float curr_z_val;				// Текущее значение forward-ускорения, см. (*)
+
+void calc_1st_avg(float* frame) 
+{
+	for(uint8_t i = 0; i < FRAME_SIZE; i++) {
+		curr_avg += frame[i];
+	}
+	curr_avg /= total_samples;
+}
+
+void calc_avg(float new_val) {
+	curr_avg = prev_avg + (new_val - prev_avg)/total_samples;
+}
+
+void calc_1st_std(float *frame) 
+{
+	float sum = 0.0;
+	for(uint8_t i = 0; i < FRAME_SIZE; i++) {
+		sum += (frame[i] - curr_avg)*(frame[i] - curr_avg);
+	}
+	st_d = sqrtf((1.0/(total_samples - 1))*sum);
+}
+
+void calc_std(float new_val) 
+{
+	st_d = sqrtf(((total_samples - 2)*st_d*st_d + (new_val - curr_avg)*(new_val - prev_avg))/(total_samples - 1));
+}
+
+/*
+ * Ось Z акселерометра располагаем по направлению движения - forward-ускорение (*),  
+ * Считаем, что момент шага наступает когда выполняются условия:
+ * 1. Предварительно был зафиксирован пик, т.е. нога поднялась, значение forward-ускорения 
+ *    стало больше чем модуль среднего + СКО * коэффициент (**)									
+ * 2. Значение forward-ускорения стало меньше чем среднее * коэффициент - СКО * коэффициент (***)
+ *	
+ * На "обнаружительную способность" влияют коэффициеты. 
+ * Для фильтрации по времени (чтобы диод не зажигался несколько раз в момент шага) можно пропускать 
+ * проверку на пики/ямы в течение нескольких выборок после обнаружения момента шага
+ */
 
 ISR(TRX24_RX_END_vect)
 {
@@ -178,20 +224,41 @@ ISR(TRX24_RX_END_vect)
 				
 		float *float_ptr = (float*)&TRXFBST;
 		read_xyz_to_tmp(float_ptr);
-		frame_count++;
+		curr_z_val = tmp_z[frame_counter];
+		frame_counter++;
+		total_samples++;
+		
+		PORTD |= (1 << PD4);
 		
 		//FILTER ON
 		if(filter_is_on) {
 			 /* Первую десятку записываем в буфер, но по UART не передаем */
-			if(it_is_1st_sample) {
-				if(frame_count == FRAME_SIZE) {
+			if(it_is_1st_frame) {
+				if(frame_counter == FRAME_SIZE) {
 					copy_tmp_to(PREVIOUS);
-					it_is_1st_sample = false;
-					frame_count = 0;
+					it_is_1st_frame = false;
+					frame_counter = 0;
+					calc_1st_avg(&tmp_z[0]);
+					calc_1st_std(&tmp_z[0]);
 				}
 			}
 			else {
-				if(frame_count == FRAME_SIZE) {
+				prev_avg = curr_avg;
+				calc_avg(curr_z_val);
+				calc_std(curr_z_val);
+				
+				if(there_was_a_pit && (curr_z_val > (fabs(curr_avg) + 1.8*st_d))) { // (**)
+					there_was_a_peak = true;
+					there_was_a_pit = false;
+				}
+				
+				if(there_was_a_peak && (curr_z_val < curr_avg)) { // (***)
+					PORTD &= ~(1 << PD4);
+					there_was_a_peak = false;
+					there_was_a_pit = true;
+				}
+					
+				if(frame_counter == FRAME_SIZE) {
 					copy_tmp_to(CURRENT);
 					/*
 					 * 1. Сглаживаем предыдущую и текущую десятки
@@ -207,56 +274,18 @@ ISR(TRX24_RX_END_vect)
 					smooth(TEMPORARY);
 					send_frame_by_uart(true);
 					send_header_by_uart();
-					frame_count = 0;
+					frame_counter = 0;
 				}
 			}
 		}
 		//FILTER OFF
 		else { 
-			if(frame_count == FRAME_SIZE) {
+			if(frame_counter == FRAME_SIZE) {
 				send_frame_by_uart(false);
 				send_header_by_uart();
-				frame_count = 0;
+				frame_counter = 0;
 			}
 		}
 	}
 }
 	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-
-		
-		
